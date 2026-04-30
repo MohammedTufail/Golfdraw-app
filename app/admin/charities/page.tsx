@@ -135,21 +135,26 @@ export default function AdminCharitiesPage() {
       }
 
       if (editId) {
+        const payload: Partial<Charity> & {
+          updated_at?: string;
+        } = {
+          name: form.name,
+          slug,
+          description: form.description || null,
+          website_url: form.website_url || null,
+          is_featured: form.is_featured,
+          updated_at: new Date().toISOString(),
+        };
+
         const { error } = await supabase
           .from("charities")
-          .update({
-            name: form.name,
-            slug,
-            description: form.description || null,
-            website_url: form.website_url || null,
-            is_featured: form.is_featured,
-            updated_at: new Date().toISOString(),
-          })
+          .update(payload as never)
           .eq("id", editId);
+
         if (error) throw error;
         setMsg("Charity updated.");
       } else {
-        const { error } = await supabase.from("charities").insert({
+        const payload = {
           name: form.name,
           slug,
           description: form.description || null,
@@ -157,7 +162,12 @@ export default function AdminCharitiesPage() {
           is_featured: form.is_featured,
           is_active: true,
           total_received: 0,
-        });
+        };
+
+        const { error } = await supabase
+          .from("charities")
+          .insert(payload as never).eq;
+
         if (error) throw error;
         setMsg("Charity created.");
       }
