@@ -200,34 +200,40 @@ export default function AdminCharitiesPage() {
     }
   };
   const toggleFeatured = async (c: Charity) => {
-    if (!c.is_featured) {
-      // Unfeature all first
-      await supabase
-        .from("charities")
-        .update({ is_featured: false });
-      
-      await supabase
-        .from("charities")
-        .update({ is_featured: !c.is_featured })
-        .eq("id", c.id);
-      loadCharities();
-    };
+  if (!c.is_featured) {
+    await supabase
+      .from("charities")
+      .update({ is_featured: false });
 
-    const toggleActive = async (c: Charity) => {
-      await supabase
-        .from("charities")
-        .update({ is_active: !c.is_active })
-        .eq("id", c.id);
-      loadCharities();
-    };
+    await supabase
+      .from("charities")
+      .update({ is_featured: true })
+      .eq("id", c.id);
 
-    const handleDelete = async (id: string) => {
-      if (!confirm("Delete this charity? This cannot be undone.")) return;
-      await supabase.from("charities").delete().eq("id", id);
-      setMsg("Charity deleted.");
-      loadCharities();
-    };
+    loadCharities();
+  }
+};
 
+const toggleActive = async (c: Charity) => {
+  await supabase
+    .from("charities")
+    .update({ is_active: !c.is_active })
+    .eq("id", c.id);
+
+  loadCharities();
+};
+
+const handleDelete = async (id: string) => {
+  if (!confirm("Delete this charity? This cannot be undone.")) return;
+
+  await supabase
+    .from("charities")
+    .delete()
+    .eq("id", id);
+
+  setMsg("Charity deleted.");
+  loadCharities();
+};
     return (
       <div style={{ background: "var(--bg)", minHeight: "100vh" }}>
         <Navbar />
