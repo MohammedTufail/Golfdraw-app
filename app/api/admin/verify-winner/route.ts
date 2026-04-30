@@ -10,6 +10,75 @@
  *   - "mark_paid": marks payout as completed after manual bank transfer
  */
 
+
+
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { createServerClientInstance } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/types";
+
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
+
+export async function POST(req: Request) {
+  const supabase = await createServerClientInstance();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+
+  const { data: me } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if ((me as { role: string } | null)?.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { winnerId, action } = (await req.json()) as {
+    winnerId: string;
+    action: "approve" | "reject" | "mark_paid";
+  };
+
+  if (!winnerId || !["approve", "reject", "mark_paid"].includes(action)) {
+    return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
+  }
+
+  const now = new Date().toISOString();
+  let updateData: Database["public"]["Tables"]["winners"]["Update"] = {
+    updated_at: now,
+  };
+
+  if (action === "approve") {
+    updateData = {
+      ...updateData,
+      verification_status: "approved",
+      verified_at: now,
+    };
+  } else if (action === "reject") {
+    updateData = {
+      ...updateData,
+      verification_status: "rejected",
+      proof_url: null,
+    };
+  } else if (action === "mark_paid") {
+    updateData = { ...updateData, payout_status: "paid", paid_at: now };
+  }
+
+  const { error } = await supabaseAdmin
+    .from("winners")
+    .update(updateData)
+    .eq("id", winnerId);
+  if (error)
+    return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ success: true });
+}
+/*
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -127,3 +196,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
+  */
