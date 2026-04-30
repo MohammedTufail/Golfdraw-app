@@ -81,7 +81,9 @@ export default function AdminCharitiesPage() {
         .eq("id", user.id)
         .single();
 
-      if (p?.role !== "admin") {
+      const profile = p as { role: "admin" | "subscriber" } | null;
+
+      if (profile?.role !== "admin") {
         router.push("/dashboard");
         return;
       }
