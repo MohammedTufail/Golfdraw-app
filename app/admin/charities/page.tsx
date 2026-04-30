@@ -142,11 +142,13 @@ export default function AdminCharitiesPage() {
           .replace(/[^a-z0-9-]/g, "");
 
       // check duplicate slug
-      const { data: existing } = await supabase
+      const { data } = await supabase
         .from("charities")
         .select("id")
         .eq("slug", slug)
         .maybeSingle();
+
+      const existing = data as { id: string } | null;
 
       if (existing && existing.id !== editId) {
         setMsg("Slug already exists.");
