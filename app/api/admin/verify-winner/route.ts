@@ -11,62 +11,119 @@
  */
 
 import { NextResponse } from "next/server";
-import { createServerClientInstance } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Admin client (server-side only)
 const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+  process.env.SUPABASE_SERVICE_ROLE_KEY as string,
 );
 
 export async function POST(req: Request) {
-  // Verify admin
-  const supabase = await createServerClientInstance();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user)
-    return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
+  try {
+    // -----------------------------
+    // 1. Check Authorization Header
+    // -----------------------------
+    const authHeader = req.headers.get("authorization");
 
-  const { data: profile } = await supabaseAdmin
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (profile?.role !== "admin")
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: "Missing authorization" },
+        { status: 401 },
+      );
+    }
 
-  const { winnerId, action } = (await req.json()) as {
-    winnerId: string;
-    action: "approve" | "reject" | "mark_paid";
-  };
+    const token = authHeader.replace("Bearer ", "");
 
-  if (!winnerId || !["approve", "reject", "mark_paid"].includes(action)) {
-    return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
+    // -----------------------------
+    // 2. Verify User (Anon Client)
+    // -----------------------------
+    const supabaseUser = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL as string,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
+    );
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseUser.auth.getUser(token);
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // -----------------------------
+    // 3. Check Admin Role
+    // -----------------------------
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (profileError || profile?.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // -----------------------------
+    // 4. Parse Request Body
+    // -----------------------------
+    const { winnerId, action } = await req.json();
+
+    const validActions = ["approve", "reject", "mark_paid"];
+
+    if (!winnerId || !validActions.includes(action)) {
+      return NextResponse.json(
+        { error: "Invalid parameters" },
+        { status: 400 },
+      );
+    }
+
+    // -----------------------------
+    // 5. Prepare Update Data
+    // -----------------------------
+    const now = new Date().toISOString();
+
+    let updateData: Record<string, any> = {
+      updated_at: now,
+    };
+
+    if (action === "approve") {
+      updateData.verification_status = "approved";
+      updateData.verified_at = now;
+    }
+
+    if (action === "reject") {
+      updateData.verification_status = "rejected";
+      updateData.proof_url = null;
+    }
+
+    if (action === "mark_paid") {
+      updateData.payout_status = "paid";
+      updateData.paid_at = now;
+    }
+
+    // -----------------------------
+    // 6. Update Database
+    // -----------------------------
+    const { error: updateError } = await supabaseAdmin
+      .from("winners")
+      .update(updateData)
+      .eq("id", winnerId);
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    // -----------------------------
+    // 7. Success Response
+    // -----------------------------
+    return NextResponse.json({
+      success: true,
+    });
+  } catch (err) {
+    console.error("API Error:", err);
+
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
-
-  let updateData: Record<string, any> = {
-    updated_at: new Date().toISOString(),
-  };
-
-  if (action === "approve") {
-    updateData.verification_status = "approved";
-    updateData.verified_at = new Date().toISOString();
-  } else if (action === "reject") {
-    updateData.verification_status = "rejected";
-    updateData.proof_url = null; // Force re-upload
-  } else if (action === "mark_paid") {
-    updateData.payout_status = "paid";
-    updateData.paid_at = new Date().toISOString();
-  }
-
-  const { error } = await supabaseAdmin
-    .from("winners")
-    .update(updateData)
-    .eq("id", winnerId);
-
-  if (error)
-    return NextResponse.json({ error: error.message }, { status: 500 });
-
-  return NextResponse.json({ success: true });
 }
