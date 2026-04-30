@@ -9,7 +9,7 @@
  *   - "reject":  sets verification_status to rejected (user can re-upload)
  *   - "mark_paid": marks payout as completed after manual bank transfer
  */
-"use client";
+
 import { NextResponse } from "next/server";
 import { createServerClientInstance } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
