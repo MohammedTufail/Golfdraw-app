@@ -143,14 +143,14 @@ export default function AdminCharitiesPage() {
 
       // check duplicate slug
       const { data } = await supabase
-        .from("charities")
-        .select("id")
-        .eq("slug", slug)
-        .maybeSingle();
+  .from("charities")
+  .select("*")
+  .eq("slug", slug)
+  .maybeSingle();
 
-      const existing = data as { id: string } | null;
+const existing = data as Charity | null;
 
-      if (existing && existing.id !== editId) {
+if (existing && existing.id !== editId) {
         setMsg("Slug already exists.");
         setSaving(false);
         return;
