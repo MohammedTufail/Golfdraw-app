@@ -1,4 +1,4 @@
-"use client";
+/*"use client";
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -550,3 +550,4 @@ export default function AdminCharitiesPage() {
     </div>
   );
 }
+*/
