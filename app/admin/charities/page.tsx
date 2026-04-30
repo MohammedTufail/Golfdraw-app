@@ -126,8 +126,9 @@ export default function AdminCharitiesPage() {
         .select("id, slug")
         .eq("slug", slug)
         .maybeSingle();
-      const existing = rawExisting as { id: string; slug: string } | null;
-      if (existing && existing.id !== editId) {
+      const existing = rawExisting as { id?: string } | null;
+
+      if (existing?.id && existing.id !== editId) {
         setMsg("Slug already exists.");
         setSaving(false);
         return;
