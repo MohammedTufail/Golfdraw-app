@@ -166,7 +166,7 @@ export default function AdminCharitiesPage() {
 
         const { error } = await supabase
           .from("charities")
-          .insert(payload as never).eq;
+          .insert(payload as any);
 
         if (error) throw error;
         setMsg("Charity created.");
