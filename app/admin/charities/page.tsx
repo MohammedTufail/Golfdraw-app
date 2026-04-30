@@ -1,3 +1,14 @@
+
+
+export default function AdminCharitiesPage() {
+  return (
+    <div style={{ padding: 40 }}>
+      <h1>Charities page temporarily disabled</h1>
+    </div>
+  );
+}
+
+
 /*"use client";
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
