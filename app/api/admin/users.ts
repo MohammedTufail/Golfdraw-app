@@ -11,8 +11,8 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createServerClientInstance } from "@/lib/supabase/server";
-
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -20,7 +20,20 @@ const supabaseAdmin = createClient(
 
 export async function GET(req: Request) {
   // 1. Verify the requester is an authenticated admin
-  const supabase = await createServerClientInstance();
+const cookieStore = cookies();
+
+const supabase = createServerClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value;
+      },
+    },
+  },
+  );
+
   const {
     data: { user },
   } = await supabase.auth.getUser();

@@ -1,10 +1,28 @@
 "use client";
-import { useState, useEffect } from "react";
+/**
+ * Admin Draw Management — FIXED VERSION
+ *
+ * Fixes:
+ * 1. Simulate now sends forceAll=true so it works even when subscriptions table is empty
+ * 2. Shows simulation preview — who would win with these numbers
+ * 3. Shows winner breakdown after publish
+ * 4. Proper error messages if something goes wrong
+ */
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/layout/navbar";
-import { ArrowLeft, Play, Eye, CheckCircle, Plus, Zap } from "lucide-react";
+import {
+  ArrowLeft,
+  Play,
+  Eye,
+  CheckCircle,
+  Plus,
+  Zap,
+  Trophy,
+  RefreshCw,
+} from "lucide-react";
 
 type Draw = {
   id: string;
@@ -21,6 +39,31 @@ type Draw = {
   published_at: string | null;
 };
 
+type SimResult = {
+  winningNumbers: number[];
+  totalParticipants: number;
+  prizePool: { jackpot: number; pool4: number; pool3: number };
+  wouldWin?: {
+    userId: string;
+    name: string;
+    matchCount: number;
+    matchedNumbers: number[];
+  }[];
+  winners?: {
+    jackpot: number;
+    fourMatch: number;
+    threeMatch: number;
+    total: number;
+    details: {
+      userId: string;
+      name: string;
+      matchCount: number;
+      matchedNumbers: number[];
+    }[];
+  };
+  mode?: string;
+};
+
 export default function AdminDrawsPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -31,12 +74,20 @@ export default function AdminDrawsPage() {
   const [newTitle, setNewTitle] = useState("");
   const [newMonth, setNewMonth] = useState("");
   const [newType, setNewType] = useState<"random" | "weighted">("random");
+  const [lastResult, setLastResult] = useState<SimResult | null>(null);
+  const [lastAction, setLastAction] = useState<"simulate" | "publish" | null>(
+    null,
+  );
+  const [apiError, setApiError] = useState("");
+  const hasLoaded = useRef(false);
 
   useEffect(() => {
-    checkAdminAndLoad();
+    if (hasLoaded.current) return;
+    hasLoaded.current = true;
+    checkAndLoad();
   }, []);
 
-  const checkAdminAndLoad = async () => {
+  const checkAndLoad = async () => {
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -49,7 +100,7 @@ export default function AdminDrawsPage() {
       .select("role")
       .eq("id", user.id)
       .single();
-    if (p?.role !== "admin") {
+    if ((p as { role: string } | null)?.role !== "admin") {
       router.push("/dashboard");
       return;
     }
@@ -61,7 +112,7 @@ export default function AdminDrawsPage() {
       .from("draws")
       .select("*")
       .order("draw_month", { ascending: false });
-    setDraws(data || []);
+    setDraws((data as Draw[]) || []);
     setLoading(false);
   };
 
@@ -86,17 +137,25 @@ export default function AdminDrawsPage() {
     action: "simulate" | "publish",
   ) => {
     setRunning(drawId);
+    setApiError("");
+    setLastResult(null);
     try {
       const res = await fetch("/api/draws/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ drawId, action }),
+        // forceAll=true: bypasses subscription check — includes all users with 3+ scores
+        body: JSON.stringify({ drawId, action, forceAll: true }),
       });
       const data = await res.json();
-      if (data.success) loadDraws();
-      else alert(data.error || "Something went wrong");
-    } catch (e) {
-      alert("Request failed");
+      if (data.success) {
+        setLastResult(data);
+        setLastAction(action);
+        loadDraws();
+      } else {
+        setApiError(data.error || "Something went wrong");
+      }
+    } catch {
+      setApiError("Request failed — check your network or Supabase connection");
     }
     setRunning(null);
   };
@@ -104,11 +163,11 @@ export default function AdminDrawsPage() {
   return (
     <div style={{ background: "var(--bg)", minHeight: "100vh" }}>
       <Navbar />
-
       <div
-        className="max-w-5xl mx-auto px-6"
+        className="max-w-6xl mx-auto px-6"
         style={{ paddingTop: 100, paddingBottom: 60 }}
       >
+        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -137,7 +196,7 @@ export default function AdminDrawsPage() {
                 Draw Management
               </h1>
               <p style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.9rem" }}>
-                Configure, simulate and publish monthly draws
+                Simulate → Review → Publish
               </p>
             </div>
           </div>
@@ -148,6 +207,321 @@ export default function AdminDrawsPage() {
             <Plus size={16} /> New Draw
           </button>
         </div>
+
+        {/* Error */}
+        {apiError && (
+          <div
+            style={{
+              background: "rgba(248,113,113,0.1)",
+              border: "1px solid rgba(248,113,113,0.25)",
+              borderRadius: 12,
+              padding: "16px 20px",
+              marginBottom: 24,
+              color: "#f87171",
+            }}
+          >
+            <strong>Error:</strong> {apiError}
+          </div>
+        )}
+
+        {/* Simulation / Publish Result Panel */}
+        {lastResult && (
+          <div
+            style={{
+              marginBottom: 32,
+              borderRadius: 16,
+              padding: 28,
+              background:
+                lastAction === "publish"
+                  ? "rgba(74,222,128,0.06)"
+                  : "rgba(201,168,76,0.06)",
+              border: `1px solid ${lastAction === "publish" ? "rgba(74,222,128,0.25)" : "rgba(201,168,76,0.25)"}`,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                marginBottom: 20,
+                flexWrap: "wrap",
+                gap: 12,
+              }}
+            >
+              <h3
+                style={{
+                  fontFamily: "var(--font-clash)",
+                  fontSize: "1.2rem",
+                  fontWeight: 700,
+                  color: lastAction === "publish" ? "#4ade80" : "var(--gold)",
+                }}
+              >
+                {lastAction === "publish"
+                  ? "✅ Draw Published!"
+                  : "🎲 Simulation Preview"}
+              </h3>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 16,
+                  fontSize: "0.85rem",
+                  color: "rgba(255,255,255,0.5)",
+                }}
+              >
+                <span>{lastResult.totalParticipants} participants</span>
+                <span
+                  style={{
+                    color:
+                      lastResult.mode === "all_users_with_scores"
+                        ? "#facc15"
+                        : "rgba(255,255,255,0.4)",
+                  }}
+                >
+                  {lastResult.mode === "all_users_with_scores"
+                    ? "⚠ Dev mode (all users)"
+                    : "Live subscribers"}
+                </span>
+              </div>
+            </div>
+
+            {/* Winning numbers */}
+            <div style={{ marginBottom: 20 }}>
+              <div
+                style={{
+                  color: "rgba(255,255,255,0.4)",
+                  fontSize: "0.8rem",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.06em",
+                  marginBottom: 10,
+                }}
+              >
+                Winning Numbers
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {lastResult.winningNumbers.map((n) => (
+                  <div
+                    key={n}
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: 12,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontFamily: "var(--font-clash)",
+                      fontWeight: 700,
+                      fontSize: "1.3rem",
+                      background: "rgba(201,168,76,0.15)",
+                      color: "var(--gold)",
+                      border: "1px solid rgba(201,168,76,0.4)",
+                    }}
+                  >
+                    {n}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Prize pools */}
+            <div
+              style={{
+                display: "flex",
+                gap: 16,
+                marginBottom: 20,
+                flexWrap: "wrap",
+              }}
+            >
+              {[
+                {
+                  label: "Jackpot (5-match)",
+                  value: lastResult.prizePool.jackpot,
+                  color: "#f0d87a",
+                },
+                {
+                  label: "4-Match Pool",
+                  value: lastResult.prizePool.pool4,
+                  color: "#e2e8f0",
+                },
+                {
+                  label: "3-Match Pool",
+                  value: lastResult.prizePool.pool3,
+                  color: "#94a3b8",
+                },
+              ].map((p) => (
+                <div
+                  key={p.label}
+                  style={{
+                    padding: "12px 18px",
+                    borderRadius: 10,
+                    background: "rgba(255,255,255,0.04)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                >
+                  <div
+                    style={{
+                      color: "rgba(255,255,255,0.4)",
+                      fontSize: "0.75rem",
+                      marginBottom: 4,
+                    }}
+                  >
+                    {p.label}
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "var(--font-clash)",
+                      fontWeight: 700,
+                      color: p.color,
+                      fontSize: "1.1rem",
+                    }}
+                  >
+                    £{p.value.toFixed(2)}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Who wins / would win */}
+            {(() => {
+              const winners =
+                lastAction === "publish"
+                  ? lastResult.winners?.details
+                  : lastResult.wouldWin;
+              if (!winners || winners.length === 0) {
+                return (
+                  <div
+                    style={{
+                      padding: "16px",
+                      borderRadius: 10,
+                      background: "rgba(255,255,255,0.03)",
+                      color: "rgba(255,255,255,0.4)",
+                      fontSize: "0.9rem",
+                    }}
+                  >
+                    No matches found this draw. Jackpot rolls over.
+                  </div>
+                );
+              }
+              return (
+                <div>
+                  <div
+                    style={{
+                      color: "rgba(255,255,255,0.4)",
+                      fontSize: "0.8rem",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                      marginBottom: 12,
+                    }}
+                  >
+                    {lastAction === "publish"
+                      ? "Winners"
+                      : "Would Win (preview)"}
+                  </div>
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 8 }}
+                  >
+                    {winners.map((w) => (
+                      <div
+                        key={w.userId}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 16,
+                          padding: "12px 16px",
+                          borderRadius: 10,
+                          background:
+                            w.matchCount >= 5
+                              ? "rgba(201,168,76,0.08)"
+                              : w.matchCount === 4
+                                ? "rgba(255,255,255,0.04)"
+                                : "rgba(255,255,255,0.02)",
+                          border: `1px solid ${w.matchCount >= 5 ? "rgba(201,168,76,0.25)" : "rgba(255,255,255,0.07)"}`,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 12,
+                          }}
+                        >
+                          <Trophy
+                            size={16}
+                            style={{
+                              color:
+                                w.matchCount >= 5
+                                  ? "var(--gold)"
+                                  : w.matchCount === 4
+                                    ? "#e2e8f0"
+                                    : "#94a3b8",
+                            }}
+                          />
+                          <div>
+                            <div
+                              style={{ fontWeight: 600, fontSize: "0.95rem" }}
+                            >
+                              {w.name}
+                            </div>
+                            <div
+                              style={{
+                                color: "rgba(255,255,255,0.4)",
+                                fontSize: "0.8rem",
+                              }}
+                            >
+                              {w.matchCount}-Number Match · Matched:{" "}
+                              {w.matchedNumbers.join(", ")}
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          style={{
+                            padding: "4px 12px",
+                            borderRadius: 20,
+                            fontSize: "0.8rem",
+                            fontWeight: 600,
+                            background:
+                              w.matchCount >= 5
+                                ? "rgba(201,168,76,0.15)"
+                                : "rgba(255,255,255,0.07)",
+                            color:
+                              w.matchCount >= 5
+                                ? "var(--gold)"
+                                : "rgba(255,255,255,0.7)",
+                          }}
+                        >
+                          {w.matchCount >= 5
+                            ? "JACKPOT"
+                            : w.matchCount === 4
+                              ? "4-Match"
+                              : "3-Match"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {lastResult.mode === "all_users_with_scores" && (
+              <div
+                style={{
+                  marginTop: 16,
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  background: "rgba(250,204,21,0.06)",
+                  border: "1px solid rgba(250,204,21,0.2)",
+                  color: "#facc15",
+                  fontSize: "0.82rem",
+                }}
+              >
+                ⚠ Dev mode: subscriptions table is empty, so all users with 3+
+                scores were included. In production with LemonSqueezy active,
+                only paying subscribers will enter the draw.
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Create Draw Form */}
         {showCreate && (
@@ -197,7 +571,7 @@ export default function AdminDrawsPage() {
                     marginBottom: 8,
                   }}
                 >
-                  Month (YYYY-MM)
+                  Month
                 </label>
                 <input
                   type="month"
@@ -225,8 +599,10 @@ export default function AdminDrawsPage() {
                   }
                   style={{ cursor: "pointer" }}
                 >
-                  <option value="random">Random (Standard Lottery)</option>
-                  <option value="weighted">Weighted (Score Frequency)</option>
+                  <option value="random">Random (standard lottery)</option>
+                  <option value="weighted">
+                    Weighted (by score frequency)
+                  </option>
                 </select>
               </div>
             </div>
@@ -330,13 +706,15 @@ export default function AdminDrawsPage() {
                     </td>
                     <td>
                       {draw.winning_numbers ? (
-                        <div style={{ display: "flex", gap: 6 }}>
-                          {draw.winning_numbers.map((n) => (
+                        <div
+                          style={{ display: "flex", gap: 5, flexWrap: "wrap" }}
+                        >
+                          {draw.winning_numbers.map((n: number) => (
                             <div
                               key={n}
                               style={{
-                                width: 28,
-                                height: 28,
+                                width: 30,
+                                height: 30,
                                 borderRadius: 6,
                                 fontSize: "0.8rem",
                                 background: "rgba(201,168,76,0.12)",
@@ -346,7 +724,7 @@ export default function AdminDrawsPage() {
                                 alignItems: "center",
                                 justifyContent: "center",
                                 fontFamily: "var(--font-clash)",
-                                fontWeight: 600,
+                                fontWeight: 700,
                               }}
                             >
                               {n}
@@ -363,7 +741,7 @@ export default function AdminDrawsPage() {
                       style={{
                         color: "var(--gold)",
                         fontFamily: "var(--font-clash)",
-                        fontWeight: 600,
+                        fontWeight: 700,
                       }}
                     >
                       £{draw.jackpot_amount.toFixed(2)}
@@ -372,10 +750,10 @@ export default function AdminDrawsPage() {
                           style={{
                             fontSize: "0.7rem",
                             color: "rgba(201,168,76,0.6)",
-                            marginLeft: 4,
+                            marginLeft: 6,
                           }}
                         >
-                          +rollover
+                          ↗ rollover
                         </span>
                       )}
                     </td>
@@ -393,33 +771,55 @@ export default function AdminDrawsPage() {
                             disabled={running === draw.id}
                             className="btn-primary"
                             style={{
-                              padding: "6px 12px",
-                              fontSize: "0.8rem",
+                              padding: "6px 14px",
+                              fontSize: "0.82rem",
                               opacity: running === draw.id ? 0.5 : 1,
                             }}
                           >
-                            <Eye size={12} /> Simulate
+                            {running === draw.id ? (
+                              <RefreshCw
+                                size={12}
+                                style={{ animation: "spin 1s linear infinite" }}
+                              />
+                            ) : (
+                              <Eye size={12} />
+                            )}
+                            {running === draw.id ? " Running..." : " Simulate"}
                           </button>
                         )}
                         {draw.status === "simulated" && (
-                          <button
-                            onClick={() => runDrawAction(draw.id, "publish")}
-                            disabled={running === draw.id}
-                            className="btn-gold"
-                            style={{
-                              padding: "6px 12px",
-                              fontSize: "0.8rem",
-                              opacity: running === draw.id ? 0.5 : 1,
-                            }}
-                          >
-                            <CheckCircle size={12} /> Publish
-                          </button>
+                          <>
+                            <button
+                              onClick={() => runDrawAction(draw.id, "simulate")}
+                              disabled={running === draw.id}
+                              className="btn-primary"
+                              style={{
+                                padding: "6px 14px",
+                                fontSize: "0.82rem",
+                                opacity: running === draw.id ? 0.5 : 1,
+                              }}
+                            >
+                              <RefreshCw size={12} /> Re-run
+                            </button>
+                            <button
+                              onClick={() => runDrawAction(draw.id, "publish")}
+                              disabled={running === draw.id}
+                              className="btn-gold"
+                              style={{
+                                padding: "6px 14px",
+                                fontSize: "0.82rem",
+                                opacity: running === draw.id ? 0.5 : 1,
+                              }}
+                            >
+                              <CheckCircle size={12} /> Publish
+                            </button>
+                          </>
                         )}
                         {draw.status === "published" && (
                           <span
                             style={{
                               color: "#4ade80",
-                              fontSize: "0.8rem",
+                              fontSize: "0.82rem",
                               display: "flex",
                               alignItems: "center",
                               gap: 4,
@@ -437,8 +837,8 @@ export default function AdminDrawsPage() {
           </table>
         </div>
 
-        {/* Prize Pool Explanation */}
-        <div className="glass-card" style={{ padding: 28, marginTop: 28 }}>
+        {/* Prize pool info */}
+        <div className="glass-card" style={{ padding: 24, marginTop: 24 }}>
           <h3
             style={{
               fontFamily: "var(--font-clash)",
@@ -452,7 +852,7 @@ export default function AdminDrawsPage() {
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 16,
+              gap: 12,
             }}
           >
             {[
@@ -460,7 +860,7 @@ export default function AdminDrawsPage() {
                 tier: "5-Match",
                 pct: "40%",
                 color: "#f0d87a",
-                note: "Jackpot · Rolls over if unclaimed",
+                note: "Jackpot · rolls over if no winner",
               },
               {
                 tier: "4-Match",
