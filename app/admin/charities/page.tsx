@@ -16,6 +16,9 @@ import {
   X,
 } from "lucide-react";
 
+// Untyped client — avoids "never" TypeScript errors on insert/update during build
+// See lib/supabase/client.ts for explanation
+
 type Charity = {
   id: string;
   name: string;
@@ -67,7 +70,7 @@ export default function AdminCharitiesPage() {
         .select("role")
         .eq("id", session.user.id)
         .single();
-      if ((p as { role: string } | null)?.role !== "admin") {
+      if ((p as { role?: string } | null)?.role !== "admin") {
         router.push("/dashboard");
         return;
       }
@@ -120,14 +123,13 @@ export default function AdminCharitiesPage() {
           .replace(/\s+/g, "-")
           .replace(/[^a-z0-9-]/g, "");
 
-      // FIXED: cast result to known type — was previously inferred as 'never'
       const { data: rawExisting } = await supabase
         .from("charities")
-        .select("id, slug")
+        .select("id")
         .eq("slug", slug)
         .maybeSingle();
-      const existing = rawExisting as { id: string; slug: string } | null;
-      if (existing && existing.id !== editId) {
+      const existingId = (rawExisting as { id?: string } | null)?.id;
+      if (existingId && existingId !== editId) {
         setMsg("Slug already exists.");
         setSaving(false);
         return;
@@ -173,26 +175,27 @@ export default function AdminCharitiesPage() {
 
   const toggleFeatured = async (c: Charity) => {
     if (!c.is_featured) {
-      // Cast to any for the bulk unfeature — typed client collapses to never on unfiltered updates
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = supabase as any;
-      await db.from("charities").update({ is_featured: false }).neq("id", c.id);
-      await db.from("charities").update({ is_featured: true }).eq("id", c.id);
+      await supabase
+        .from("charities")
+        .update({ is_featured: false })
+        .neq("id", c.id);
+      await supabase
+        .from("charities")
+        .update({ is_featured: true })
+        .eq("id", c.id);
       loadCharities();
     }
   };
   const toggleActive = async (c: Charity) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any)
+    await supabase
       .from("charities")
       .update({ is_active: !c.is_active })
       .eq("id", c.id);
     loadCharities();
   };
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this charity? This cannot be undone.")) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from("charities").delete().eq("id", id);
+    if (!confirm("Delete this charity?")) return;
+    await supabase.from("charities").delete().eq("id", id);
     setMsg("Charity deleted.");
     loadCharities();
   };
@@ -244,12 +247,18 @@ export default function AdminCharitiesPage() {
         {msg && (
           <div
             style={{
-              background: "rgba(74,222,128,0.1)",
-              border: "1px solid rgba(74,222,128,0.25)",
+              background:
+                msg.includes("rror") || msg.includes("exist")
+                  ? "rgba(248,113,113,0.1)"
+                  : "rgba(74,222,128,0.1)",
+              border: `1px solid ${msg.includes("rror") || msg.includes("exist") ? "rgba(248,113,113,0.25)" : "rgba(74,222,128,0.25)"}`,
               borderRadius: 10,
               padding: "12px 16px",
               marginBottom: 24,
-              color: "#4ade80",
+              color:
+                msg.includes("rror") || msg.includes("exist")
+                  ? "#f87171"
+                  : "#4ade80",
               fontSize: "0.9rem",
             }}
           >
@@ -290,51 +299,65 @@ export default function AdminCharitiesPage() {
                 marginBottom: 16,
               }}
             >
-              {[
-                {
-                  label: "Name *",
-                  key: "name",
-                  placeholder: "e.g. Cancer Research UK",
-                },
-                {
-                  label: "Slug (auto if blank)",
-                  key: "slug",
-                  placeholder: "e.g. cancer-research-uk",
-                },
-                {
-                  label: "Website URL",
-                  key: "website_url",
-                  placeholder: "https://...",
-                },
-              ].map((f) => (
-                <div key={f.key}>
-                  <label
-                    style={{
-                      display: "block",
-                      color: "rgba(255,255,255,0.5)",
-                      fontSize: "0.8rem",
-                      marginBottom: 8,
-                    }}
-                  >
-                    {f.label}
-                  </label>
-                  <input
-                    type="text"
-                    className="glass-input"
-                    placeholder={f.placeholder}
-                    value={
-                      f.key === "name"
-                        ? form.name
-                        : f.key === "slug"
-                          ? form.slug
-                          : form.website_url
-                    }
-                    onChange={(e) =>
-                      setForm({ ...form, [f.key]: e.target.value })
-                    }
-                  />
-                </div>
-              ))}
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    color: "rgba(255,255,255,0.5)",
+                    fontSize: "0.8rem",
+                    marginBottom: 8,
+                  }}
+                >
+                  Name *
+                </label>
+                <input
+                  type="text"
+                  className="glass-input"
+                  placeholder="e.g. Cancer Research UK"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    color: "rgba(255,255,255,0.5)",
+                    fontSize: "0.8rem",
+                    marginBottom: 8,
+                  }}
+                >
+                  Slug (auto if blank)
+                </label>
+                <input
+                  type="text"
+                  className="glass-input"
+                  placeholder="e.g. cancer-research-uk"
+                  value={form.slug}
+                  onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                />
+              </div>
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    color: "rgba(255,255,255,0.5)",
+                    fontSize: "0.8rem",
+                    marginBottom: 8,
+                  }}
+                >
+                  Website URL
+                </label>
+                <input
+                  type="text"
+                  className="glass-input"
+                  placeholder="https://..."
+                  value={form.website_url}
+                  onChange={(e) =>
+                    setForm({ ...form, website_url: e.target.value })
+                  }
+                />
+              </div>
             </div>
             <div style={{ marginBottom: 16 }}>
               <label
@@ -377,7 +400,7 @@ export default function AdminCharitiesPage() {
               <span
                 style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.9rem" }}
               >
-                Featured charity (shown on homepage)
+                Featured (shown on homepage)
               </span>
             </label>
             <div style={{ display: "flex", gap: 12 }}>

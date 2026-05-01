@@ -1,13 +1,4 @@
 "use client";
-/**
- * Admin Draw Management — FIXED VERSION
- *
- * Fixes:
- * 1. Simulate now sends forceAll=true so it works even when subscriptions table is empty
- * 2. Shows simulation preview — who would win with these numbers
- * 3. Shows winner breakdown after publish
- * 4. Proper error messages if something goes wrong
- */
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -15,7 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import Navbar from "@/components/layout/navbar";
 import {
   ArrowLeft,
-  Play,
   Eye,
   CheckCircle,
   Plus,
@@ -100,7 +90,7 @@ export default function AdminDrawsPage() {
       .select("role")
       .eq("id", user.id)
       .single();
-    if ((p as { role: string } | null)?.role !== "admin") {
+    if ((p as { role?: string } | null)?.role !== "admin") {
       router.push("/dashboard");
       return;
     }
@@ -143,7 +133,6 @@ export default function AdminDrawsPage() {
       const res = await fetch("/api/draws/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // forceAll=true: bypasses subscription check — includes all users with 3+ scores
         body: JSON.stringify({ drawId, action, forceAll: true }),
       });
       const data = await res.json();
@@ -151,11 +140,9 @@ export default function AdminDrawsPage() {
         setLastResult(data);
         setLastAction(action);
         loadDraws();
-      } else {
-        setApiError(data.error || "Something went wrong");
-      }
+      } else setApiError(data.error || "Something went wrong");
     } catch {
-      setApiError("Request failed — check your network or Supabase connection");
+      setApiError("Request failed — check network or Supabase connection");
     }
     setRunning(null);
   };
@@ -167,7 +154,6 @@ export default function AdminDrawsPage() {
         className="max-w-6xl mx-auto px-6"
         style={{ paddingTop: 100, paddingBottom: 60 }}
       >
-        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -208,7 +194,6 @@ export default function AdminDrawsPage() {
           </button>
         </div>
 
-        {/* Error */}
         {apiError && (
           <div
             style={{
@@ -224,7 +209,7 @@ export default function AdminDrawsPage() {
           </div>
         )}
 
-        {/* Simulation / Publish Result Panel */}
+        {/* Result panel */}
         {lastResult && (
           <div
             style={{
@@ -269,22 +254,14 @@ export default function AdminDrawsPage() {
                 }}
               >
                 <span>{lastResult.totalParticipants} participants</span>
-                <span
-                  style={{
-                    color:
-                      lastResult.mode === "all_users_with_scores"
-                        ? "#facc15"
-                        : "rgba(255,255,255,0.4)",
-                  }}
-                >
-                  {lastResult.mode === "all_users_with_scores"
-                    ? "⚠ Dev mode (all users)"
-                    : "Live subscribers"}
-                </span>
+                {lastResult.mode === "all_users_with_scores" && (
+                  <span style={{ color: "#facc15" }}>
+                    ⚠ Dev mode (no subscriptions)
+                  </span>
+                )}
               </div>
             </div>
 
-            {/* Winning numbers */}
             <div style={{ marginBottom: 20 }}>
               <div
                 style={{
@@ -322,7 +299,6 @@ export default function AdminDrawsPage() {
               </div>
             </div>
 
-            {/* Prize pools */}
             <div
               style={{
                 display: "flex",
@@ -380,27 +356,25 @@ export default function AdminDrawsPage() {
               ))}
             </div>
 
-            {/* Who wins / would win */}
             {(() => {
               const winners =
                 lastAction === "publish"
                   ? lastResult.winners?.details
                   : lastResult.wouldWin;
-              if (!winners || winners.length === 0) {
+              if (!winners || winners.length === 0)
                 return (
                   <div
                     style={{
-                      padding: "16px",
+                      padding: 16,
                       borderRadius: 10,
                       background: "rgba(255,255,255,0.03)",
                       color: "rgba(255,255,255,0.4)",
                       fontSize: "0.9rem",
                     }}
                   >
-                    No matches found this draw. Jackpot rolls over.
+                    No matches this draw. Jackpot rolls over to next month.
                   </div>
                 );
-              }
               return (
                 <div>
                   <div
@@ -432,9 +406,7 @@ export default function AdminDrawsPage() {
                           background:
                             w.matchCount >= 5
                               ? "rgba(201,168,76,0.08)"
-                              : w.matchCount === 4
-                                ? "rgba(255,255,255,0.04)"
-                                : "rgba(255,255,255,0.02)",
+                              : "rgba(255,255,255,0.03)",
                           border: `1px solid ${w.matchCount >= 5 ? "rgba(201,168,76,0.25)" : "rgba(255,255,255,0.07)"}`,
                           flexWrap: "wrap",
                         }}
@@ -502,28 +474,10 @@ export default function AdminDrawsPage() {
                 </div>
               );
             })()}
-
-            {lastResult.mode === "all_users_with_scores" && (
-              <div
-                style={{
-                  marginTop: 16,
-                  padding: "10px 14px",
-                  borderRadius: 8,
-                  background: "rgba(250,204,21,0.06)",
-                  border: "1px solid rgba(250,204,21,0.2)",
-                  color: "#facc15",
-                  fontSize: "0.82rem",
-                }}
-              >
-                ⚠ Dev mode: subscriptions table is empty, so all users with 3+
-                scores were included. In production with LemonSqueezy active,
-                only paying subscribers will enter the draw.
-              </div>
-            )}
           </div>
         )}
 
-        {/* Create Draw Form */}
+        {/* Create form */}
         {showCreate && (
           <div className="glass-card" style={{ padding: 28, marginBottom: 28 }}>
             <h3
@@ -620,7 +574,7 @@ export default function AdminDrawsPage() {
           </div>
         )}
 
-        {/* Draws Table */}
+        {/* Draws table */}
         <div className="glass-card" style={{ overflow: "hidden" }}>
           <table
             style={{ width: "100%", borderCollapse: "collapse" }}
@@ -632,7 +586,7 @@ export default function AdminDrawsPage() {
                 <th style={{ textAlign: "left" }}>Month</th>
                 <th style={{ textAlign: "left" }}>Type</th>
                 <th style={{ textAlign: "left" }}>Status</th>
-                <th style={{ textAlign: "left" }}>Winning Numbers</th>
+                <th style={{ textAlign: "left" }}>Numbers</th>
                 <th style={{ textAlign: "left" }}>Jackpot</th>
                 <th style={{ textAlign: "right" }}>Actions</th>
               </tr>
@@ -776,15 +730,8 @@ export default function AdminDrawsPage() {
                               opacity: running === draw.id ? 0.5 : 1,
                             }}
                           >
-                            {running === draw.id ? (
-                              <RefreshCw
-                                size={12}
-                                style={{ animation: "spin 1s linear infinite" }}
-                              />
-                            ) : (
-                              <Eye size={12} />
-                            )}
-                            {running === draw.id ? " Running..." : " Simulate"}
+                            <Eye size={12} />{" "}
+                            {running === draw.id ? "Running..." : "Simulate"}
                           </button>
                         )}
                         {draw.status === "simulated" && (
@@ -835,78 +782,6 @@ export default function AdminDrawsPage() {
               )}
             </tbody>
           </table>
-        </div>
-
-        {/* Prize pool info */}
-        <div className="glass-card" style={{ padding: 24, marginTop: 24 }}>
-          <h3
-            style={{
-              fontFamily: "var(--font-clash)",
-              fontWeight: 600,
-              marginBottom: 16,
-            }}
-          >
-            Prize Pool Split
-          </h3>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 12,
-            }}
-          >
-            {[
-              {
-                tier: "5-Match",
-                pct: "40%",
-                color: "#f0d87a",
-                note: "Jackpot · rolls over if no winner",
-              },
-              {
-                tier: "4-Match",
-                pct: "35%",
-                color: "#e2e8f0",
-                note: "Split among all 4-match winners",
-              },
-              {
-                tier: "3-Match",
-                pct: "25%",
-                color: "#94a3b8",
-                note: "Split among all 3-match winners",
-              },
-            ].map((t) => (
-              <div
-                key={t.tier}
-                style={{
-                  padding: 16,
-                  borderRadius: 12,
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                }}
-              >
-                <div
-                  style={{
-                    fontFamily: "var(--font-clash)",
-                    fontSize: "1.5rem",
-                    fontWeight: 700,
-                    color: t.color,
-                  }}
-                >
-                  {t.pct}
-                </div>
-                <div style={{ fontWeight: 600, marginTop: 4 }}>{t.tier}</div>
-                <div
-                  style={{
-                    color: "rgba(255,255,255,0.4)",
-                    fontSize: "0.78rem",
-                    marginTop: 4,
-                  }}
-                >
-                  {t.note}
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>
