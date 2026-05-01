@@ -1,15 +1,4 @@
-
 "use client";
-
-export default function AdminCharitiesPage() {
-  return (
-    <div style={{ padding: 40 }}>
-      <h1>Admin Charities (Disabled)</h1>
-      <p>This page is temporarily disabled.</p>
-    </div>
-  );
-}
-/*"use client";
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -549,4 +538,3 @@ export default function AdminCharitiesPage() {
     </div>
   );
 }
-*/
