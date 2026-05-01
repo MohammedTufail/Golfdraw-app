@@ -1,11 +1,12 @@
 "use client";
-import { useState } from "react";
+
+import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Trophy, Check } from "lucide-react";
 
-export default function SignupPage() {
+function SignupContent() {
   const router = useRouter();
   const params = useSearchParams();
   const supabase = createClient();
@@ -37,16 +38,26 @@ export default function SignupPage() {
       return;
     }
 
-    // Redirect to Stripe checkout
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, userId: data.user?.id, email }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          plan,
+          userId: data.user?.id,
+          email,
+        }),
       });
+
       const { url } = await res.json();
-      if (url) window.location.href = url;
-      else router.push("/dashboard");
+
+      if (url) {
+        window.location.href = url;
+      } else {
+        router.push("/dashboard");
+      }
     } catch {
       router.push("/dashboard");
     }
@@ -383,5 +394,12 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  );
+}
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <SignupContent />
+    </Suspense>
   );
 }

@@ -356,26 +356,29 @@ export default function AdminUserDetailPage() {
                         }}
                       >
                         <input
-                          type="number"
-                          min={1}
-                          max={45}
-                          value={editScore.score}
-                          onChange={(e) =>
-                            setEditScore({
-                              ...editScore,
-                              score: e.target.value,
-                            })
-                          }
-                          style={{
-                            width: 60,
-                            background: "rgba(255,255,255,0.08)",
-                            border: "1px solid rgba(255,255,255,0.2)",
-                            borderRadius: 6,
-                            padding: "4px 8px",
-                            color: "white",
-                            fontSize: "0.9rem",
-                          }}
-                        />
+  type="number"
+  min={1}
+  max={45}
+  value={editScore?.score ?? ""}
+  onChange={(e) => {
+    if (!editScore) return;
+
+    setEditScore({
+      ...editScore,
+      score: e.target.value,
+    });
+  }}
+  style={{
+    width: 60,
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.2)",
+    borderRadius: 6,
+    padding: "4px 8px",
+    color: "white",
+    fontSize: "0.9rem",
+  }}
+/>
+                      
                         <button
                           onClick={saveScore}
                           disabled={saving}

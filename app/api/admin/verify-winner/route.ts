@@ -71,7 +71,7 @@ export async function POST(req: Request) {
 
   const { error } = await supabaseAdmin
     .from("winners")
-    .update(updateData)
+    .update(updateData as never)
     .eq("id", winnerId);
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });

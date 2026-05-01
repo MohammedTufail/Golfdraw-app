@@ -87,7 +87,7 @@ export async function POST(req: Request) {
         ),
         amount_pence: amountPence,
         renewal_date: renewalDate.toISOString(),
-      });
+      } as never);
     } else if (
       eventName === "subscription_updated" ||
       eventName === "subscription_cancelled" ||
@@ -109,7 +109,7 @@ export async function POST(req: Request) {
 
       await supabaseAdmin
         .from("subscriptions")
-        .update(updateData)
+        .update(updateData as never)
         .eq("lemonsqueezy_subscription_id", lsId);
     }
   } catch (err) {

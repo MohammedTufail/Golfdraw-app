@@ -60,11 +60,11 @@ export async function GET() {
     .select("user_id");
 
   const scoreMap: Record<string, number> = {};
-  for (const row of scoreCounts || []) {
+  for (const row of (scoreCounts as { user_id: string }[]) || []) {
     scoreMap[row.user_id] = (scoreMap[row.user_id] || 0) + 1;
   }
 
-  const enriched = (profiles || []).map((p) => ({
+  const enriched = (profiles || []).map((p: any) => ({
     ...p,
     score_count: scoreMap[p.id] || 0,
   }));

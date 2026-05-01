@@ -201,7 +201,7 @@ export async function POST(req: Request) {
 
   await supabaseAdmin
     .from("draws")
-    .update(drawUpdatePayload)
+    .update(drawUpdatePayload as never)
     .eq("id", drawId);
 
   // 8. On publish: find winners, create records
@@ -235,7 +235,7 @@ export async function POST(req: Request) {
     } else {
       await supabaseAdmin
         .from("draws")
-        .update({ jackpot_rolled_over: true })
+        .update({ jackpot_rolled_over: true } as never)
         .eq("id", drawId);
     }
 
@@ -268,7 +268,7 @@ export async function POST(req: Request) {
     }
 
     if (inserts.length > 0) {
-      await supabaseAdmin.from("winners").insert(inserts);
+      await supabaseAdmin.from("winners").insert(inserts as never);
     }
 
     // Enrich winner details with names
