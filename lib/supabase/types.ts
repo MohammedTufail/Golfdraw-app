@@ -51,8 +51,8 @@ export type Database = {
           user_id: string;
           plan: "monthly" | "yearly";
           status: "active" | "inactive" | "cancelled" | "lapsed";
-          stripe_customer_id: string | null;
-          stripe_subscription_id: string | null;
+          lemonsqueezy_customer_id: string | null;
+          lemonsqueezy_subscription_id: string | null;
           amount_pence: number;
           renewal_date: string | null;
           cancelled_at: string | null;
@@ -63,16 +63,16 @@ export type Database = {
           user_id: string;
           plan: "monthly" | "yearly";
           status?: "active" | "inactive" | "cancelled" | "lapsed";
-          stripe_customer_id?: string | null;
-          stripe_subscription_id?: string | null;
+          lemonsqueezy_customer_id?: string | null;
+          lemonsqueezy_subscription_id?: string | null;
           amount_pence: number;
           renewal_date?: string | null;
         };
         Update: {
           plan?: "monthly" | "yearly";
           status?: "active" | "inactive" | "cancelled" | "lapsed";
-          stripe_customer_id?: string | null;
-          stripe_subscription_id?: string | null;
+          lemonsqueezy_customer_id?: string | null;
+          lemonsqueezy_subscription_id?: string | null;
           amount_pence?: number;
           renewal_date?: string | null;
           cancelled_at?: string | null;
@@ -312,7 +312,7 @@ export type Database = {
           reference_id?: string | null;
         };
         Update: {
-          success?: boolean;
+          success?: boolean
         };
       };
     };

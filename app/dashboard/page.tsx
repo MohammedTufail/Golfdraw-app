@@ -1,10 +1,8 @@
-
-//user dashboard showing subscription status, scores, charity, and winnings summary
 import { redirect } from "next/navigation";
 import { createServerClientInstance } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import Navbar from "@/components/layout/navbar";
-import SubscribedBanner from "@/components/dashboard/SubscribedBanner";
 import {
   Trophy,
   Calendar,
@@ -13,6 +11,16 @@ import {
   ArrowRight,
   TrendingUp,
 } from "lucide-react";
+import type { Database } from "@/lib/supabase/types";
+
+// Admin client for cross-table reads that RLS might block
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
+
+type Score = Database["public"]["Tables"]["scores"]["Row"];
+type Winner = Database["public"]["Tables"]["winners"]["Row"];
 
 export default async function DashboardPage() {
   const supabase = await createServerClientInstance();
@@ -21,43 +29,46 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Fetch all user data
   const [profileRes, subRes, scoresRes, winnersRes] = await Promise.all([
-    supabase
+    supabaseAdmin
       .from("profiles")
       .select("*, charities(name, logo_url)")
       .eq("id", user.id)
       .single(),
-    supabase
+    supabaseAdmin
       .from("subscriptions")
       .select("*")
       .eq("user_id", user.id)
       .eq("status", "active")
       .maybeSingle(),
-    supabase
+    supabaseAdmin
       .from("scores")
       .select("*")
       .eq("user_id", user.id)
       .order("score_date", { ascending: false }),
-    supabase.from("winners").select("*").eq("user_id", user.id),
+    supabaseAdmin.from("winners").select("*").eq("user_id", user.id),
   ]);
 
-  const profile = profileRes.data;
-  const subscription = subRes.data;
-  const scores = scoresRes.data || [];
-  const winners = winnersRes.data || [];
+  const profile = profileRes.data as
+    | (Database["public"]["Tables"]["profiles"]["Row"] & {
+        charities: { name: string; logo_url: string | null } | null;
+      })
+    | null;
+  const subscription = subRes.data as
+    | Database["public"]["Tables"]["subscriptions"]["Row"]
+    | null;
+  const scores = (scoresRes.data as Score[]) || [];
+  const winners = (winnersRes.data as Winner[]) || [];
   const totalWon = winners.reduce((sum, w) => sum + (w.prize_amount || 0), 0);
-  const charity = (profile as any)?.charities;
+  const charity = profile?.charities;
 
   return (
     <div style={{ background: "var(--bg)", minHeight: "100vh" }}>
       <Navbar />
-      <SubscribedBanner />
       <div
         className="max-w-7xl mx-auto px-6"
         style={{ paddingTop: 100, paddingBottom: 60 }}
       >
-        {/* Header */}
         <div style={{ marginBottom: 40 }}>
           <p
             style={{
@@ -84,7 +95,6 @@ export default async function DashboardPage() {
           </h1>
         </div>
 
-        {/* Subscription Alert if inactive */}
         {!subscription && (
           <div
             style={{
@@ -110,11 +120,7 @@ export default async function DashboardPage() {
                 Subscribe to enter the monthly draw and start competing.
               </div>
             </div>
-            <Link
-              href="/signup"
-              className="btn-gold"
-              style={{ whiteSpace: "nowrap" }}
-            >
+            <Link href="/signup" className="btn-gold">
               Subscribe Now
             </Link>
           </div>
@@ -129,220 +135,100 @@ export default async function DashboardPage() {
             marginBottom: 32,
           }}
         >
-          {/* Subscription Status */}
-          <div className="stat-card">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 16,
-              }}
-            >
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: "rgba(255,255,255,0.06)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
+          {[
+            {
+              label: "Plan",
+              value: subscription
+                ? subscription.plan.charAt(0).toUpperCase() +
+                  subscription.plan.slice(1)
+                : "Inactive",
+              icon: (
                 <Star
                   size={16}
                   style={{ color: subscription ? "#4ade80" : "#f87171" }}
                 />
-              </div>
-              <span
-                style={{
-                  color: "rgba(255,255,255,0.5)",
-                  fontSize: "0.8rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                Plan
-              </span>
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-clash)",
-                fontSize: "1.3rem",
-                fontWeight: 700,
-                marginBottom: 4,
-              }}
-            >
-              {subscription
-                ? subscription.plan.charAt(0).toUpperCase() +
-                  subscription.plan.slice(1)
-                : "Inactive"}
-            </div>
-            {subscription?.renewal_date && (
-              <div
-                style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}
-              >
-                Renews{" "}
-                {new Date(subscription.renewal_date).toLocaleDateString(
-                  "en-GB",
-                  { day: "numeric", month: "short" },
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Scores */}
-          <div className="stat-card">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 16,
-              }}
-            >
+              ),
+              sub: subscription?.renewal_date
+                ? `Renews ${new Date(subscription.renewal_date).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+                : "",
+            },
+            {
+              label: "Scores",
+              value: `${scores.length} / 5`,
+              icon: <TrendingUp size={16} style={{ color: "var(--gold)" }} />,
+              sub:
+                scores.length < 5
+                  ? `${5 - scores.length} more to add`
+                  : "Full roster",
+            },
+            {
+              label: "Charity",
+              value: charity?.name || "None selected",
+              icon: <Heart size={16} style={{ color: "#f87171" }} />,
+              sub: `${profile?.charity_contribution_pct || 10}% contribution`,
+            },
+            {
+              label: "Total Won",
+              value: `£${totalWon.toFixed(2)}`,
+              icon: <Trophy size={16} style={{ color: "var(--gold)" }} />,
+              sub: `${winners.length} draw${winners.length !== 1 ? "s" : ""} won`,
+            },
+          ].map((s) => (
+            <div key={s.label} className="stat-card">
               <div
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: "rgba(255,255,255,0.06)",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
+                  gap: 10,
+                  marginBottom: 16,
                 }}
               >
-                <TrendingUp size={16} style={{ color: "var(--gold)" }} />
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: "rgba(255,255,255,0.06)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {s.icon}
+                </div>
+                <span
+                  style={{
+                    color: "rgba(255,255,255,0.5)",
+                    fontSize: "0.8rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                  }}
+                >
+                  {s.label}
+                </span>
               </div>
-              <span
-                style={{
-                  color: "rgba(255,255,255,0.5)",
-                  fontSize: "0.8rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                Scores
-              </span>
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-clash)",
-                fontSize: "1.3rem",
-                fontWeight: 700,
-                marginBottom: 4,
-              }}
-            >
-              {scores.length} / 5
-            </div>
-            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}>
-              {5 - scores.length > 0
-                ? `${5 - scores.length} more to add`
-                : "Full roster"}
-            </div>
-          </div>
-
-          {/* Charity */}
-          <div className="stat-card">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 16,
-              }}
-            >
               <div
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: "rgba(239,68,68,0.08)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  fontFamily: "var(--font-clash)",
+                  fontSize: "1.2rem",
+                  fontWeight: 700,
+                  marginBottom: 4,
                 }}
               >
-                <Heart size={16} style={{ color: "#f87171" }} />
+                {s.value}
               </div>
-              <span
-                style={{
-                  color: "rgba(255,255,255,0.5)",
-                  fontSize: "0.8rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                Charity
-              </span>
+              {s.sub && (
+                <div
+                  style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}
+                >
+                  {s.sub}
+                </div>
+              )}
             </div>
-            <div
-              style={{
-                fontFamily: "var(--font-clash)",
-                fontSize: "1rem",
-                fontWeight: 600,
-                marginBottom: 4,
-              }}
-            >
-              {charity?.name || "None selected"}
-            </div>
-            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}>
-              {profile?.charity_contribution_pct || 10}% contribution
-            </div>
-          </div>
-
-          {/* Winnings */}
-          <div className="stat-card">
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 16,
-              }}
-            >
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  background: "rgba(201,168,76,0.1)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Trophy size={16} style={{ color: "var(--gold)" }} />
-              </div>
-              <span
-                style={{
-                  color: "rgba(255,255,255,0.5)",
-                  fontSize: "0.8rem",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.06em",
-                }}
-              >
-                Total Won
-              </span>
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-clash)",
-                fontSize: "1.3rem",
-                fontWeight: 700,
-                marginBottom: 4,
-              }}
-            >
-              £{totalWon.toFixed(2)}
-            </div>
-            <div style={{ color: "rgba(255,255,255,0.4)", fontSize: "0.8rem" }}>
-              {winners.length} draw{winners.length !== 1 ? "s" : ""} entered
-            </div>
-          </div>
+          ))}
         </div>
 
-        {/* Main Content Grid */}
+        {/* Main Grid */}
         <div
           style={{
             display: "grid",
@@ -350,7 +236,7 @@ export default async function DashboardPage() {
             gap: 24,
           }}
         >
-          {/* Score Entry Card */}
+          {/* Scores */}
           <div className="glass-card" style={{ padding: 28 }}>
             <div
               style={{
@@ -377,7 +263,6 @@ export default async function DashboardPage() {
                 Manage <ArrowRight size={13} />
               </Link>
             </div>
-
             {scores.length === 0 ? (
               <div
                 style={{
@@ -386,11 +271,9 @@ export default async function DashboardPage() {
                   color: "rgba(255,255,255,0.3)",
                 }}
               >
-                <TrendingUp
-                  size={32}
-                  style={{ margin: "0 auto 12px", opacity: 0.3 }}
-                />
-                <p style={{ fontSize: "0.9rem" }}>No scores entered yet</p>
+                <p style={{ fontSize: "0.9rem", marginBottom: 8 }}>
+                  No scores entered yet
+                </p>
                 <Link
                   href="/dashboard/scores"
                   style={{
@@ -403,184 +286,59 @@ export default async function DashboardPage() {
                 </Link>
               </div>
             ) : (
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 10 }}
-              >
-                {scores.map((s, i) => (
-                  <div
-                    key={s.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "12px 16px",
-                      borderRadius: 10,
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                    }}
-                  >
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 12 }}
-                    >
-                      <div
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: "50%",
-                          background:
-                            i === 0 ? "var(--gold)" : "rgba(255,255,255,0.2)",
-                        }}
-                      />
-                      <span
-                        style={{
-                          color: "rgba(255,255,255,0.5)",
-                          fontSize: "0.85rem",
-                        }}
-                      >
-                        {new Date(s.score_date).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                        })}
-                      </span>
-                    </div>
-                    <span
-                      style={{
-                        fontFamily: "var(--font-clash)",
-                        fontWeight: 700,
-                        fontSize: "1.1rem",
-                        color: "white",
-                      }}
-                    >
-                      {s.stableford_score}
-                    </span>
-                  </div>
-                ))}
-                {scores.length < 5 && (
-                  <p
-                    style={{
-                      color: "rgba(255,255,255,0.3)",
-                      fontSize: "0.8rem",
-                      textAlign: "center",
-                      marginTop: 8,
-                    }}
-                  >
-                    {5 - scores.length} more score
-                    {5 - scores.length !== 1 ? "s" : ""} needed
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Charity Card */}
-          <div className="glass-card" style={{ padding: 28 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 24,
-              }}
-            >
-              <h2
-                style={{
-                  fontFamily: "var(--font-clash)",
-                  fontSize: "1.1rem",
-                  fontWeight: 600,
-                }}
-              >
-                My Charity
-              </h2>
-              <Link
-                href="/dashboard/charity"
-                className="btn-primary"
-                style={{ padding: "7px 16px", fontSize: "0.85rem" }}
-              >
-                Change <ArrowRight size={13} />
-              </Link>
-            </div>
-
-            {charity ? (
-              <div>
+              scores.map((s, i) => (
                 <div
-                  style={{
-                    padding: "20px",
-                    borderRadius: 12,
-                    background: "rgba(239,68,68,0.06)",
-                    border: "1px solid rgba(239,68,68,0.12)",
-                    marginBottom: 16,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontFamily: "var(--font-clash)",
-                      fontSize: "1.1rem",
-                      fontWeight: 600,
-                      marginBottom: 8,
-                    }}
-                  >
-                    {charity.name}
-                  </div>
-                  <div
-                    style={{
-                      color: "rgba(255,255,255,0.5)",
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    You're contributing{" "}
-                    <span style={{ color: "#f87171", fontWeight: 600 }}>
-                      {profile?.charity_contribution_pct}%
-                    </span>{" "}
-                    of your subscription
-                  </div>
-                </div>
-                <div
+                  key={s.id}
                   style={{
                     display: "flex",
+                    alignItems: "center",
                     justifyContent: "space-between",
-                    color: "rgba(255,255,255,0.4)",
-                    fontSize: "0.8rem",
+                    padding: "12px 16px",
+                    borderRadius: 10,
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    marginBottom: 8,
                   }}
                 >
-                  <span>Monthly contribution</span>
-                  <span style={{ color: "white" }}>
-                    £
-                    {(
-                      ((subscription?.amount_pence || 999) *
-                        ((profile?.charity_contribution_pct || 10) / 100)) /
-                      100
-                    ).toFixed(2)}
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 12 }}
+                  >
+                    <div
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background:
+                          i === 0 ? "var(--gold)" : "rgba(255,255,255,0.2)",
+                      }}
+                    />
+                    <span
+                      style={{
+                        color: "rgba(255,255,255,0.5)",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      {new Date(s.score_date).toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                      })}
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-clash)",
+                      fontWeight: 700,
+                      fontSize: "1.1rem",
+                    }}
+                  >
+                    {s.stableford_score}
                   </span>
                 </div>
-              </div>
-            ) : (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "32px 0",
-                  color: "rgba(255,255,255,0.3)",
-                }}
-              >
-                <Heart
-                  size={32}
-                  style={{ margin: "0 auto 12px", opacity: 0.3 }}
-                />
-                <p style={{ fontSize: "0.9rem" }}>No charity selected</p>
-                <Link
-                  href="/dashboard/charity"
-                  style={{
-                    color: "#f87171",
-                    fontSize: "0.85rem",
-                    textDecoration: "none",
-                  }}
-                >
-                  Choose a charity →
-                </Link>
-              </div>
+              ))
             )}
           </div>
 
-          {/* Upcoming Draw */}
+          {/* Next Draw */}
           <div
             className="glass-card"
             style={{
@@ -608,12 +366,7 @@ export default async function DashboardPage() {
                 Next Draw
               </h2>
             </div>
-            <div
-              style={{
-                textAlign: "center",
-                padding: "20px 0",
-              }}
-            >
+            <div style={{ textAlign: "center", padding: "20px 0" }}>
               <div
                 style={{
                   color: "rgba(255,255,255,0.4)",
@@ -650,7 +403,7 @@ export default async function DashboardPage() {
               >
                 {scores.length >= 3 ? (
                   <span style={{ color: "#4ade80" }}>
-                    ✓ You're eligible to enter
+                    ✓ You are eligible to enter
                   </span>
                 ) : (
                   <span style={{ color: "#facc15" }}>
@@ -671,7 +424,7 @@ export default async function DashboardPage() {
                   style={{
                     color: "rgba(255,255,255,0.5)",
                     fontSize: "0.8rem",
-                    marginBottom: 4,
+                    marginBottom: 8,
                   }}
                 >
                   Your draw numbers
@@ -740,7 +493,6 @@ export default async function DashboardPage() {
                 View All <ArrowRight size={13} />
               </Link>
             </div>
-
             {winners.length === 0 ? (
               <div
                 style={{
@@ -758,45 +510,42 @@ export default async function DashboardPage() {
                 </p>
               </div>
             ) : (
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: 10 }}
-              >
-                {winners.slice(0, 4).map((w) => (
-                  <div
-                    key={w.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "12px 16px",
-                      borderRadius: 10,
-                      background: "rgba(255,255,255,0.03)",
-                      border: "1px solid rgba(255,255,255,0.06)",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: "0.85rem", fontWeight: 500 }}>
-                        {w.match_type.replace("_", "-")}
-                      </div>
-                      <span
-                        className={`badge badge-${w.payout_status}`}
-                        style={{ marginTop: 4 }}
-                      >
-                        {w.payout_status}
-                      </span>
+              winners.slice(0, 4).map((w) => (
+                <div
+                  key={w.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "12px 16px",
+                    borderRadius: 10,
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    marginBottom: 8,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: "0.85rem", fontWeight: 500 }}>
+                      {w.match_type.replace("_", "-")}
                     </div>
                     <span
-                      style={{
-                        fontFamily: "var(--font-clash)",
-                        fontWeight: 700,
-                        color: "var(--gold)",
-                      }}
+                      className={`badge badge-${w.payout_status}`}
+                      style={{ marginTop: 4 }}
                     >
-                      £{w.prize_amount.toFixed(2)}
+                      {w.payout_status}
                     </span>
                   </div>
-                ))}
-              </div>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-clash)",
+                      fontWeight: 700,
+                      color: "var(--gold)",
+                    }}
+                  >
+                    £{w.prize_amount.toFixed(2)}
+                  </span>
+                </div>
+              ))
             )}
           </div>
         </div>

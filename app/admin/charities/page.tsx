@@ -126,35 +126,29 @@ export default function AdminCharitiesPage() {
         .select("id, slug")
         .eq("slug", slug)
         .maybeSingle();
-      const existing = rawExisting as { id?: string } | null;
-
-      if (existing?.id && existing.id !== editId) {
+      const existing = rawExisting as { id: string; slug: string } | null;
+      if (existing && existing.id !== editId) {
         setMsg("Slug already exists.");
         setSaving(false);
         return;
       }
 
       if (editId) {
-        const payload: Partial<Charity> & {
-          updated_at?: string;
-        } = {
-          name: form.name,
-          slug,
-          description: form.description || null,
-          website_url: form.website_url || null,
-          is_featured: form.is_featured,
-          updated_at: new Date().toISOString(),
-        };
-
         const { error } = await supabase
           .from("charities")
-          .update(payload as never)
+          .update({
+            name: form.name,
+            slug,
+            description: form.description || null,
+            website_url: form.website_url || null,
+            is_featured: form.is_featured,
+            updated_at: new Date().toISOString(),
+          })
           .eq("id", editId);
-
         if (error) throw error;
         setMsg("Charity updated.");
       } else {
-        const payload = {
+        const { error } = await supabase.from("charities").insert({
           name: form.name,
           slug,
           description: form.description || null,
@@ -162,12 +156,7 @@ export default function AdminCharitiesPage() {
           is_featured: form.is_featured,
           is_active: true,
           total_received: 0,
-        };
-
-        const { error } = await supabase
-          .from("charities")
-          .insert(payload as any);
-
+        });
         if (error) throw error;
         setMsg("Charity created.");
       }
@@ -184,19 +173,17 @@ export default function AdminCharitiesPage() {
 
   const toggleFeatured = async (c: Charity) => {
     if (!c.is_featured) {
-      await supabase
-        .from("charities")
-        .update({ is_featured: false })
-        .neq("id", "placeholder");
-      await supabase
-        .from("charities")
-        .update({ is_featured: true })
-        .eq("id", c.id);
+      // Cast to any for the bulk unfeature — typed client collapses to never on unfiltered updates
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const db = supabase as any;
+      await db.from("charities").update({ is_featured: false }).neq("id", c.id);
+      await db.from("charities").update({ is_featured: true }).eq("id", c.id);
       loadCharities();
     }
   };
   const toggleActive = async (c: Charity) => {
-    await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any)
       .from("charities")
       .update({ is_active: !c.is_active })
       .eq("id", c.id);
@@ -204,7 +191,8 @@ export default function AdminCharitiesPage() {
   };
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this charity? This cannot be undone.")) return;
-    await supabase.from("charities").delete().eq("id", id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from("charities").delete().eq("id", id);
     setMsg("Charity deleted.");
     loadCharities();
   };

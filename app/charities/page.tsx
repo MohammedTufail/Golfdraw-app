@@ -1,37 +1,32 @@
-/**
- * Public Charities Directory
- * WHY: Visitors and subscribers can browse supported charities.
- * Featured charity gets a spotlight section. Total contributions visible for transparency.
- * This page is intentionally public — charity impact is a key acquisition hook.
- */
-
 import Navbar from "@/components/layout/navbar";
 import { createServerClientInstance } from "@/lib/supabase/server";
 import Link from "next/link";
 import { Heart, ExternalLink, Star, ArrowRight } from "lucide-react";
+import type { Database } from "@/lib/supabase/types";
 
-export const revalidate = 60; // Revalidate every 60s — charity data doesn't change rapidly
+export const revalidate = 60;
+
+type Charity = Database["public"]["Tables"]["charities"]["Row"];
 
 export default async function CharitiesPage() {
   const supabase = await createServerClientInstance();
-  const { data: charities } = await supabase
+  const { data } = await supabase
     .from("charities")
     .select("*")
     .eq("is_active", true)
     .order("is_featured", { ascending: false });
 
-  const featured = charities?.find((c) => c.is_featured);
-  const rest = charities?.filter((c) => !c.is_featured) || [];
+  const charities = (data as Charity[]) || [];
+  const featured = charities.find((c) => c.is_featured);
+  const rest = charities.filter((c) => !c.is_featured);
 
   return (
     <div style={{ background: "var(--bg)", minHeight: "100vh" }}>
       <Navbar />
-
       <div
         className="max-w-5xl mx-auto px-6"
         style={{ paddingTop: 100, paddingBottom: 80 }}
       >
-        {/* Header */}
         <div style={{ textAlign: "center", marginBottom: 64 }}>
           <div
             style={{
@@ -77,11 +72,10 @@ export default async function CharitiesPage() {
             }}
           >
             Every subscriber chooses a charity. A minimum of 10% of every
-            subscription is donated automatically — no extra steps needed.
+            subscription is donated automatically.
           </p>
         </div>
 
-        {/* Featured Charity */}
         {featured && (
           <div style={{ marginBottom: 48 }}>
             <div
@@ -117,18 +111,6 @@ export default async function CharitiesPage() {
             >
               <div
                 style={{
-                  position: "absolute",
-                  top: -40,
-                  right: -40,
-                  width: 200,
-                  height: 200,
-                  background:
-                    "radial-gradient(circle, rgba(239,68,68,0.08) 0%, transparent 70%)",
-                  borderRadius: "50%",
-                }}
-              />
-              <div
-                style={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "flex-start",
@@ -157,32 +139,27 @@ export default async function CharitiesPage() {
                   >
                     {featured.description}
                   </p>
-                  <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-                    <div>
-                      <div
-                        style={{
-                          color: "rgba(255,255,255,0.35)",
-                          fontSize: "0.75rem",
-                          letterSpacing: "0.06em",
-                          textTransform: "uppercase",
-                          marginBottom: 4,
-                        }}
-                      >
-                        Raised via GolfDraw
-                      </div>
-                      <div
-                        style={{
-                          fontFamily: "var(--font-clash)",
-                          fontSize: "1.6rem",
-                          fontWeight: 700,
-                          color: "#f87171",
-                        }}
-                      >
-                        £
-                        {featured.total_received.toLocaleString("en-GB", {
-                          minimumFractionDigits: 0,
-                        })}
-                      </div>
+                  <div>
+                    <div
+                      style={{
+                        color: "rgba(255,255,255,0.35)",
+                        fontSize: "0.75rem",
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Raised via GolfDraw
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "var(--font-clash)",
+                        fontSize: "1.6rem",
+                        fontWeight: 700,
+                        color: "#f87171",
+                      }}
+                    >
+                      £{featured.total_received.toLocaleString("en-GB")}
                     </div>
                   </div>
                 </div>
@@ -209,7 +186,6 @@ export default async function CharitiesPage() {
           </div>
         )}
 
-        {/* All Charities Grid */}
         <h2
           style={{
             fontFamily: "var(--font-clash)",
@@ -282,10 +258,7 @@ export default async function CharitiesPage() {
                       color: "#f87171",
                     }}
                   >
-                    £
-                    {charity.total_received.toLocaleString("en-GB", {
-                      minimumFractionDigits: 0,
-                    })}
+                    £{charity.total_received.toLocaleString("en-GB")}
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -294,20 +267,14 @@ export default async function CharitiesPage() {
                       href={charity.website_url}
                       target="_blank"
                       rel="noopener"
-                      style={{
-                        color: "rgba(255,255,255,0.3)",
-                        transition: "color 0.2s",
-                      }}
+                      style={{ color: "rgba(255,255,255,0.3)" }}
                     >
                       <ExternalLink size={15} />
                     </a>
                   )}
                   <Link
                     href="/signup"
-                    style={{
-                      color: "rgba(255,255,255,0.3)",
-                      transition: "color 0.2s",
-                    }}
+                    style={{ color: "rgba(255,255,255,0.3)" }}
                   >
                     <Heart size={15} />
                   </Link>
@@ -317,7 +284,6 @@ export default async function CharitiesPage() {
           ))}
         </div>
 
-        {/* CTA */}
         <div style={{ textAlign: "center", marginTop: 64 }}>
           <p style={{ color: "rgba(255,255,255,0.4)", marginBottom: 20 }}>
             Choose your charity when you subscribe. You can change it anytime.

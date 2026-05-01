@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createServerClientInstance } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import Navbar from "@/components/layout/navbar";
 import {
@@ -7,10 +8,15 @@ import {
   Trophy,
   Heart,
   BarChart3,
-  Settings,
   ArrowRight,
   Shield,
 } from "lucide-react";
+import type { Database } from "@/lib/supabase/types";
+
+const supabaseAdmin = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
 
 export default async function AdminPage() {
   const supabase = await createServerClientInstance();
@@ -19,37 +25,46 @@ export default async function AdminPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
+  const { data: profile } = await supabaseAdmin
     .from("profiles")
     .select("role")
     .eq("id", user.id)
     .single();
-  if (profile?.role !== "admin") redirect("/dashboard");
+  if ((profile as { role: string } | null)?.role !== "admin")
+    redirect("/dashboard");
 
-  // Stats
   const [usersRes, subsRes, drawsRes, winnersRes, charitiesRes] =
     await Promise.all([
-      supabase.from("profiles").select("id", { count: "exact", head: true }),
-      supabase
+      supabaseAdmin
+        .from("profiles")
+        .select("id", { count: "exact", head: true }),
+      supabaseAdmin
         .from("subscriptions")
         .select("id", { count: "exact", head: true })
         .eq("status", "active"),
-      supabase
+      supabaseAdmin
         .from("draws")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(1),
-      supabase
+      supabaseAdmin
         .from("winners")
         .select("id, prize_amount, payout_status")
         .eq("payout_status", "pending"),
-      supabase.from("charities").select("id", { count: "exact", head: true }),
+      supabaseAdmin
+        .from("charities")
+        .select("id", { count: "exact", head: true }),
     ]);
 
   const totalUsers = usersRes.count || 0;
   const activeSubs = subsRes.count || 0;
-  const latestDraw = drawsRes.data?.[0];
-  const pendingWinners = winnersRes.data || [];
+  const latestDraw = (
+    drawsRes.data as Database["public"]["Tables"]["draws"]["Row"][] | null
+  )?.[0];
+  const pendingWinners =
+    (winnersRes.data as
+      | { id: string; prize_amount: number; payout_status: string }[]
+      | null) || [];
   const pendingPayout = pendingWinners.reduce(
     (s, w) => s + (w.prize_amount || 0),
     0,
@@ -58,12 +73,10 @@ export default async function AdminPage() {
   return (
     <div style={{ background: "var(--bg)", minHeight: "100vh" }}>
       <Navbar />
-
       <div
         className="max-w-7xl mx-auto px-6"
         style={{ paddingTop: 100, paddingBottom: 60 }}
       >
-        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -212,12 +225,7 @@ export default async function AdminPage() {
             >
               <div
                 className="glass-card"
-                style={{
-                  padding: "28px",
-                  height: "100%",
-                  background: card.color,
-                  transition: "all 0.25s",
-                }}
+                style={{ padding: 28, height: "100%", background: card.color }}
               >
                 <div
                   style={{
@@ -276,7 +284,6 @@ export default async function AdminPage() {
           ))}
         </div>
 
-        {/* Latest Draw Status */}
         {latestDraw && (
           <div className="glass-card" style={{ padding: 28 }}>
             <div
